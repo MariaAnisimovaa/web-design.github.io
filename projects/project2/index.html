@@ -1,0 +1,963 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Дашборд</title>
+<style>
+  :root {
+  --bg: #f5f7fb;
+  --panel-bg: #1e1f26;
+  --card-bg: #ffffff;
+  --accent: #7335e6;
+  --text: #333;
+  --radius: 10px;
+  --shadow: 0 3px 10px rgba(0,0,0,0.1);
+}
+
+body {
+  margin: 0;
+  font-family: "Inter", sans-serif;
+  background: var(--bg);
+  display: flex;
+  min-height: 100vh;
+}
+
+/* ЛЕВАЯ ПАНЕЛЬ */
+.sidebar {
+  background: var(--panel-bg);
+  color: #fff;
+  padding: 20px;
+  width: 230px;
+  flex-shrink: 0;
+  display: flex;
+  flex-direction: column;
+}
+.sidebar h2 {
+  font-size: 1.2rem;
+  margin-bottom: 15px;
+}
+.available-widgets button {
+  background: #2a2b35;
+  border: none;
+  color: #fff;
+  padding: 8px 10px;
+  margin-bottom: 8px;
+  border-radius: var(--radius);
+  cursor: pointer;
+  transition: 0.2s;
+  text-align: left;
+}
+.available-widgets button:hover {
+  background: #7335e6;
+}
+
+/* ОСНОВНОЕ ПОЛЕ */
+.dashboard {
+  flex: 1;
+  display: grid;
+  gap: 20px;
+  padding: 20px;
+  grid-template-columns: repeat(3, 1fr); /* 3 виджета в ряд */
+  grid-auto-rows: 400px; /* фиксированная высота виджетов */
+}
+
+@media (max-width: 900px) {
+  .dashboard {
+    grid-template-columns: repeat(2, 1fr);
+  }
+}
+@media (max-width: 600px) {
+  .dashboard {
+    grid-template-columns: 1fr;
+  }
+}
+
+/* ВИДЖЕТ */
+
+.widget.dragging {
+  opacity: 0.6;
+  transform: scale(1.02);
+}
+
+.widget-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 10px;
+}
+.widget-title {
+  font-weight: 600;
+  color: var(--text);
+}
+.widget {
+  background: var(--card-bg);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow);
+  padding: 10px 15px;
+  display: flex;
+  flex-direction: column;
+  position: relative;
+  cursor: grab;
+  transition: transform 0.2s ease, box-shadow 0.2s ease;
+
+  height: 400px; /* фиксированная высота */
+  width: 100%; /* ширина адаптивная */
+  box-sizing: border-box;
+  overflow: hidden;
+}
+
+.widget-content {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between; /* контент равномерно распределен */
+  align-items: center;
+  width: 100%;
+}
+
+/* Изображения внутри виджетов */
+.widget-content img {
+  max-width: 100%;
+  max-height: 250px; /* подгоняем под 400px виджет */
+  object-fit: contain;
+  border-radius: 8px;
+}
+
+/* Кнопки под контентом */
+.widget-content button {
+  padding: 6px 10px;
+  border-radius: 6px;
+  background: #7335e6;
+  color: white;
+  border: none;
+  cursor: pointer;
+}
+.widget-content button:hover {
+  background: #7335e6;
+}
+
+/* Заголовок виджета */
+.widget h4 {
+  font-size: 14px;
+  margin: 0 0 5px 0;
+  text-align: center;
+}
+
+/* ТАЙМЕР */
+.timer-container {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
+}
+.timer-time {
+  font-size: 2.5rem;
+  font-weight: bold;
+  color: var(--text);
+}
+.timer-buttons button {
+  border: none;
+  padding: 8px 12px;
+  border-radius: var(--radius);
+  background: var(--accent);
+  color: #fff;
+  cursor: pointer;
+  margin: 3px;
+  font-size: 0.9rem;
+  transition: 0.2s;
+}
+.timer-buttons button:hover {
+  background: #3574e6;
+  
+}
+</style>
+</head>
+<body>
+  <aside class="sidebar">
+    <h2>Виджеты</h2>
+    <div class="available-widgets" id="available"></div>
+  </aside>
+
+  <main class="dashboard" id="dashboard"></main>
+
+<script>
+const allWidgets = [
+  { id: 'weather', title: 'Карты Valorant' },
+  { id: 'timer', title: 'Таймер' },
+  { id: 'currency', title: 'Скин Valorant' },
+  { id: 'quote', title: 'Случайная цитата' },
+  { id: 'notes', title: 'Агенты Valorant' },
+  { id: 'sudoku', title: 'Судоку' },
+  { id: 'spreys', title: 'Спреи' },
+  { id: 'card', title: 'Карточка игрока' },
+  { id: 'bundle', title: 'Коллекция оружия' }
+];
+
+let activeWidgets = JSON.parse(localStorage.getItem('dashboardWidgets')) || allWidgets.slice(0,6);
+
+
+function renderAvailable(){
+  const availableContainer = document.getElementById('available');
+  availableContainer.innerHTML = '';
+  allWidgets.forEach(w=>{
+    if(!activeWidgets.some(a=>a.id===w.id)){
+      const btn = document.createElement('button');
+      btn.textContent = `+ ${w.title}`;
+      btn.onclick = ()=>addWidget(w.id);
+      availableContainer.appendChild(btn);
+    }
+  });
+}
+
+function renderDashboard(){
+  const dashboard = document.getElementById('dashboard');
+  dashboard.innerHTML = '';
+  activeWidgets.forEach(widget=>{
+    const div = document.createElement('div');
+    div.className = 'widget';
+    div.draggable = true;
+    div.dataset.id = widget.id;
+
+    div.innerHTML = `
+      <div class="widget-header">
+        <span class="widget-title">${widget.title}</span>
+        <div class="widget-buttons">
+          <button class="refresh">↻</button>
+          <button class="remove">✖</button>
+        </div>
+      </div>
+      <div class="widget-content" id="content-${widget.id}">Загрузка...</div>
+    `;
+
+    div.querySelector('.refresh').onclick = ()=>refreshWidget(widget.id);
+    div.querySelector('.remove').onclick = ()=>removeWidget(widget.id);
+
+    dashboard.appendChild(div);
+    setTimeout(()=>loadWidgetContent(widget.id), 300);
+  });
+
+  addDragAndDrop();
+  localStorage.setItem('dashboardWidgets', JSON.stringify(activeWidgets));
+  renderAvailable();
+}
+
+function loadWidgetContent(id) {
+  const container = document.getElementById('content-' + id);
+  if (!container) return;
+  switch (id) {
+    case 'timer':
+      renderTimer(container);
+      break;
+    case 'sudoku':
+      renderSudoku(container);
+      break;
+    case 'quote':
+      renderQuote(container);
+    break;
+    case 'currency':
+      renderValorantSkin(container)
+    break;
+    case 'weather':
+      renderValorantMap(container)
+    break;
+    case 'notes':
+      renderValorantAgent(container)
+    break;
+    case 'spreys':
+      renderValorantSpray(container)
+    break;
+    case 'card':
+      renderValorantPlayerCard(container)
+    break;
+    case 'bundle':
+      renderValorantBundle(container)
+    break;
+    default:
+      container.textContent = 'Контент виджета';
+  }
+}
+function renderValorantBundle(container) {
+  container.innerHTML = 'Загрузка коллекции...';
+
+  fetch('https://valorant-api.com/v1/bundles')
+    .then(response => response.json())
+    .then(data => {
+      const bundles = data.data;
+      const randomBundle = bundles[Math.floor(Math.random() * bundles.length)];
+
+      const imageUrl =
+        randomBundle.displayIcon2 ||
+        randomBundle.displayIcon ||
+        randomBundle.verticalPromoImage ||
+        '';
+      const name = randomBundle.displayName || 'Неизвестная коллекция';
+
+      container.innerHTML = `
+        <h4 style="text-align:center; margin-bottom:10px;">Коллекция Valorant</h4>
+        <img src="${imageUrl}" alt="${name}" style="
+          width: 100%;
+          height: 250px;
+          border-radius: 8px;
+          object-fit: contain;
+          display: block;
+          margin: 0 auto;
+          box-shadow: 0 0 8px rgba(0,0,0,0.15);
+        ">
+        <p style="font-size:14px; text-align:center; margin-top:8px; font-weight:bold;">
+          ${name}
+        </p>
+        <button id="update-bundle" style="
+          margin-top:10px;
+          padding:6px 10px;
+          border-radius:6px;
+          background:#7335e6;
+          color:white;
+          border:none;
+          cursor:pointer;
+          display:block;
+          margin-left:auto;
+          margin-right:auto;
+        ">
+          Обновить
+        </button>
+      `;
+
+      document.getElementById('update-bundle').onclick = () => renderValorantBundle(container);
+    })
+    .catch(err => {
+      container.innerHTML = `
+        Ошибка загрузки коллекции: ${err.message}
+        <button id="retry-bundle" style="
+          margin-top:10px;
+          padding:6px 10px;
+          border-radius:6px;
+          background:#7335e6;
+          color:white;
+          border:none;
+          cursor:pointer;
+          display:block;
+          margin-left:auto;
+          margin-right:auto;
+        ">
+          Повторить
+        </button>
+      `;
+      document.getElementById('retry-bundle').onclick = () => renderValorantBundle(container);
+    });
+}
+function renderValorantPlayerCard(container) {
+  container.innerHTML = 'Загрузка карточки игрока...';
+
+  fetch('https://valorant-api.com/v1/playercards')
+    .then(response => response.json())
+    .then(data => {
+      const cards = data.data;
+      const randomCard = cards[Math.floor(Math.random() * cards.length)];
+
+      const imageUrl = randomCard.largeArt || randomCard.wideArt || randomCard.smallArt || '';
+      const name = randomCard.displayName || 'Неизвестная карточка';
+
+      container.innerHTML = `
+        <h4 style="text-align:center; margin-bottom:10px;">Карточка игрока</h4>
+        <img src="${imageUrl}" alt="${name}" style="
+          width: autp;
+          height: 250px;
+          border-radius: 8px;
+          object-fit: cover;
+          display: block;
+          margin: 0 auto;
+          box-shadow: 0 0 8px rgba(0,0,0,0.2);
+        ">
+        <p style="font-size:14px; text-align:center; margin-top:8px; font-weight:bold;">
+          ${name}
+        </p>
+        <button id="update-card" style="
+          margin-top:10px;
+          padding:6px 10px;
+          border-radius:6px;
+          background:#7335e6;
+          color:white;
+          border:none;
+          cursor:pointer;
+          display:block;
+          margin-left:auto;
+          margin-right:auto;
+        ">
+          Обновить
+        </button>
+      `;
+
+      document.getElementById('update-card').onclick = () => renderValorantPlayerCard(container);
+    })
+    .catch(err => {
+      container.innerHTML = `
+        Ошибка загрузки карточки: ${err.message}
+        <button id="retry-card" style="
+          margin-top:10px;
+          padding:6px 10px;
+          border-radius:6px;
+          background:#7335e6;
+          color:white;
+          border:none;
+          cursor:pointer;
+          display:block;
+          margin-left:auto;
+          margin-right:auto;
+        ">
+          Повторить
+        </button>
+      `;
+      document.getElementById('retry-card').onclick = () => renderValorantPlayerCard(container);
+    });
+}
+function renderValorantSpray(container) {
+  container.innerHTML = 'Загрузка спрея...';
+
+  fetch('https://valorant-api.com/v1/sprays')
+    .then(response => response.json())
+    .then(data => {
+      const sprays = data.data;
+      // Берем случайный спрей
+      const randomSpray = sprays[Math.floor(Math.random() * sprays.length)];
+
+      const imageUrl = randomSpray.fullTransparentIcon || randpmSpray.displayIcon || '';
+      const name = randomSpray.displayName || 'Неизвестный спрей';
+
+      container.innerHTML = `
+        <h4 style="text-align:center; margin-bottom:10px;">Случайный спрей</h4>
+        <img src="${imageUrl}" alt="${name}" style="
+          width: 250px; 
+          height: 250px; 
+          border-radius: 8px; 
+          object-fit: contain;
+          display:block;
+          margin:0 auto;
+        ">
+        <p style="font-size:14px; text-align:center; margin-top:8px; font-weight:bold;">${name}</p>
+        <button id="update-spray" style="
+          margin-top:10px; 
+          padding:6px 10px; 
+          border-radius:6px; 
+          background:#7335e6; 
+          color:white; 
+          border:none; 
+          cursor:pointer;
+          display:block;
+          margin-left:auto;
+          margin-right:auto;
+        ">
+          Обновить
+        </button>
+      `;
+
+      document.getElementById('update-spray').onclick = () => renderValorantSpray(container);
+    })
+    .catch(err => {
+      container.innerHTML = `
+        Ошибка загрузки спрея: ${err.message}
+        <button id="retry-spray" style="
+          margin-top:10px; 
+          padding:6px 10px; 
+          border-radius:6px; 
+          background:#7335e6; 
+          color:white; 
+          border:none; 
+          cursor:pointer;
+          display:block;
+          margin-left:auto;
+          margin-right:auto;
+        ">
+          Повторить
+        </button>
+      `;
+      document.getElementById('retry-spray').onclick = () => renderValorantSpray(container);
+    });
+}
+/* ВАЛОРАНТ АГЕНТ ВИДЖЕТ */
+function renderValorantAgent(container) {
+  container.innerHTML = 'Загрузка агента...';
+
+  fetch('https://valorant-api.com/v1/agents')
+    .then(response => {
+      if (!response.ok) throw new Error('Ошибка сети');
+      return response.json();
+    })
+    .then(data => {
+      const agents = data.data.filter(agent => agent.fullPortrait);
+      const randomAgent = agents[Math.floor(Math.random() * agents.length)];
+
+      const imageUrl = randomAgent.fullPortrait || randomAgent.displayIcon;
+      const name = randomAgent.displayName;
+      const description = randomAgent.description || "Описание отсутствует";
+
+      container.innerHTML = `
+        <img src="${imageUrl}" alt="${name}" style="
+          width: 250px; 
+          height: 250px; 
+          border-radius: 8px; 
+          object-fit: contain;
+          display: block;
+          margin: 0 auto;
+        ">
+        <h4 style="
+          text-align:center; 
+          margin:8px 0 4px; 
+          font-size:10px;
+          color:#333;
+        ">${name}</h4>
+        <p style="
+          font-size:10px; 
+          text-align:center; 
+          color:#666;
+          margin: 0 10px;
+        ">${description}</p>
+        <button id="update-agent" style="
+          margin-top:10px; 
+          padding:6px 10px; 
+          border-radius:6px; 
+          background:#7335e6; 
+          color:white; 
+          border:none; 
+          cursor:pointer;
+          display:block;
+          margin-left:auto;
+          margin-right:auto;
+        ">
+          Обновить
+        </button>
+      `;
+
+      document.getElementById('update-agent').onclick = () => renderValorantAgent(container);
+    })
+    .catch(err => {
+      container.innerHTML = `
+        Ошибка загрузки агента: ${err.message}
+        <button id="retry-agent" style="
+          margin-top:10px; 
+          padding:6px 10px; 
+          border-radius:6px; 
+          background:#4e8cff; 
+          color:white; 
+          border:none; 
+          cursor:pointer;
+          display:block;
+          margin-left:auto;
+          margin-right:auto;
+        ">
+          Повторить
+        </button>
+      `;
+      document.getElementById('retry-agent').onclick = () => renderValorantAgent(container);
+    });
+}
+
+
+
+/* КОТИКИ ВИДЖЕТ */
+function renderValorantMap(container) {
+  container.innerHTML = 'Загрузка карты...';
+
+  fetch('https://valorant-api.com/v1/maps')
+    .then(response => response.json())
+    .then(data => {
+      const maps = data.data;
+      // Берем случайную карту
+      const randomMap = maps[Math.floor(Math.random() * maps.length)];
+
+      // Используем splash или отображение, если есть
+      const imageUrl = randomMap.splash || randomMap.displayIcpn || '';
+      const name = randomMap.displayName || 'Неизвестная карта';
+      const coordinates = randomMap.coordinates || 'Координаты неизвестны';
+
+      container.innerHTML = `
+        <h4 style="text-align:center; margin-bottom:10px;">Случайная карта</h4>
+        <img src="${imageUrl}" alt="${name}" style="
+          width: 300px; 
+          height: 200px; 
+          border-radius: 8px; 
+          object-fit: cover;
+          display:block;
+          margin:0 auto;
+        ">
+        <p style="font-size:14px; text-align:center; margin-top:8px; font-weight:bold;">${name}</p>
+        <p style="font-size:12px; text-align:center; color:#666;">${coordinates}</p>
+        <button id="update-map" style="
+          margin-top:10px; 
+          padding:6px 10px; 
+          border-radius:6px; 
+          background:#7335e6; 
+          color:white; 
+          border:none; 
+          cursor:pointer;
+          display:block;
+          margin-left:auto;
+          margin-right:auto;
+        ">
+          Обновить
+        </button>
+      `;
+
+      document.getElementById('update-map').onclick = () => renderValorantMap(container);
+    })
+    .catch(err => {
+      container.innerHTML = `
+        Ошибка загрузки карты: ${err.message}
+        <button id="retry-map" style="
+          margin-top:10px; 
+          padding:6px 10px; 
+          border-radius:6px; 
+          background:#4e8cff; 
+          color:white; 
+          border:none; 
+          cursor:pointer;
+          display:block;
+          margin-left:auto;
+          margin-right:auto;
+        ">
+          Повторить
+        </button>
+      `;
+      document.getElementById('retry-map').onclick = () => renderValorantMap(container);
+    });
+}
+
+
+
+
+/* ЦИТАТА ИГРА ПРЕСТОЛОВ ВИДЖЕТ */
+function renderQuote(container) {
+  container.innerHTML = 'Загрузка цитаты...';
+
+  fetch('https://api.gameofthronesquotes.xyz/v1/random')
+    .then(response => {
+      if (!response.ok) throw new Error(`Ошибка: ${response.status}`);
+      return response.json();
+    })
+    .then(data => {
+      container.innerHTML = `
+        <h4>Случайная цитата из Игры Престолов</h4>
+        <p style="font-size:16px;">"${data.sentence}"</p>
+        <p style="font-size:14px; text-align:right;"><em>— ${data.character.name}</em></p>
+        <button id="update-quote" style="
+          margin-top:10px; padding:6px 10px; border-radius:6px; background:#7335e6; color:white; border:none; cursor:pointer;">
+          Обновить
+        </button>
+      `;
+
+      // Повторное обновление цитаты
+      document.getElementById('update-quote').onclick = () => renderQuote(container);
+    })
+    .catch(err => {
+      container.innerHTML = `
+        Ошибка загрузки цитаты: ${err.message}
+        <button id="retry-quote" style="
+          margin-top:10px; padding:6px 10px; border-radius:6px; background:#4e8cff; color:white; border:none; cursor:pointer;">
+          Повторить
+        </button>
+      `;
+      document.getElementById('retry-quote').onclick = () => renderQuote(container);
+    });
+}
+
+
+
+
+
+/* СУДОКУ ВИДЖЕТ */
+function renderSudoku(container) {
+  container.innerHTML = 'Загрузка судоку...';
+
+  fetch("https://sudoku-api.vercel.app/api/dosuku?query={newboard(limit:1){grids{value,solution,difficulty}}}")
+    .then(res => res.json())
+    .then(data => {
+      const grid = data?.newboard?.grids?.[0]?.value || Array(9).fill(0).map(() => Array(9).fill(0));
+      const solution = data?.newboard?.grids?.[0]?.solution || Array(9).fill(0).map(() => Array(9).fill(0));
+
+      // Контейнер для сетки — занимает 100% ширины и 300px высоты
+      let html = '<div id="sudoku-grid" style="display:grid;grid-template-columns:repeat(9,1fr);gap:2px;width:100%;height:300px;">';
+      grid.forEach((row, i) => {
+        row.forEach((num, j) => {
+          const cellStyle = `
+            width:100%; 
+            height:100%; 
+            display:flex; 
+            justify-content:center; 
+            align-items:center; 
+            font-weight:bold;
+            font-size:1rem;
+            border:1px solid #ccc;
+            text-align:center;
+          `;
+          if (num === 0) {
+            // Пустая клетка — input
+            html += `<input type="text" maxlength="1" data-row="${i}" data-col="${j}" style="${cellStyle}">`;
+          } else {
+            // Заполненная клетка — просто div
+            html += `<div style="background:#eef6ff;${cellStyle}">${num}</div>`;
+          }
+        });
+      });
+      html += '</div>';
+
+      container.innerHTML = `
+        ${html}
+        <div style="margin-top:8px; display:flex; gap:10px; justify-content:center;">
+          <button id="reload-sudoku" style="padding:6px 10px;border-radius:6px;background:#7335e6;color:white;border:none;cursor:pointer;">Обновить</button>
+          <button id="check-sudoku" style="padding:6px 10px;border-radius:6px;background:#960018;color:white;border:none;cursor:pointer;">Проверить</button>
+        </div>
+      `;
+
+      // Кнопка обновления
+      document.getElementById('reload-sudoku').onclick = () => renderSudoku(container);
+
+      // Кнопка проверки
+      document.getElementById('check-sudoku').onclick = () => {
+        const inputs = container.querySelectorAll('input');
+        let correct = true;
+        inputs.forEach(input => {
+          const row = parseInt(input.dataset.row);
+          const col = parseInt(input.dataset.col);
+          const val = parseInt(input.value);
+          if (val !== solution[row][col]) {
+            input.style.background = '#ffb3b3'; // неверное
+            correct = false;
+          } else {
+            input.style.background = '#b3ffb3'; // верное
+          }
+        });
+        if (correct) alert('Поздравляем! Судоку решено правильно.');
+      };
+    })
+    .catch(err => {
+      container.innerHTML = `
+        Ошибка загрузки судоку: ${err.message} <br>
+        <button style="margin-top:8px;padding:6px 10px;border-radius:6px;background:#4e8cff;color:white;border:none;cursor:pointer;"
+          onclick="renderSudoku(document.getElementById('content-sudoku'))">
+          Повторить
+        </button>
+      `;
+    });
+}
+
+
+
+
+
+
+/* ВЛОРАНТ СКИНЫ ВИДЖЕТ */
+function renderValorantSkin(container) {
+  container.innerHTML = 'Загрузка скина...';
+
+  fetch('https://valorant-api.com/v1/weapons/skins')
+    .then(response => response.json())
+    .then(data => {
+      const skins = data.data;
+      const randomSkin = skins[Math.floor(Math.random() * skins.length)];
+      const imageUrl = randomSkin.chromas?.[0]?.fullRender || randomSkin.displayIcon;
+      const name = randomSkin.displayName;
+
+      container.innerHTML = `
+        <img src="${imageUrl}" alt="${name}" style="
+          width: 300px; 
+          height: 300px; 
+          border-radius: 8px; 
+          object-fit: contain;
+          display:block;
+          margin:0 auto;
+        ">
+        <p style="font-size:14px; text-align:center; margin-top:8px;">${name}</p>
+        <button id="update-skin" style="
+          margin-top:10px; 
+          padding:6px 10px; 
+          border-radius:6px; 
+          background:#7335e6; 
+          color:white; 
+          border:none; 
+          cursor:pointer;
+          display:block;
+          margin-left:auto;
+          margin-right:auto;
+        ">
+          Обновить
+        </button>
+      `;
+
+      document.getElementById('update-skin').onclick = () => renderValorantSkin(container);
+    })
+    .catch(err => {
+      container.innerHTML = `
+        Ошибка загрузки скина: ${err.message}
+        <button id="retry-skin" style="
+          margin-top:10px; 
+          padding:6px 10px; 
+          border-radius:6px; 
+          background:#4e8cff; 
+          color:white; 
+          border:none; 
+          cursor:pointer;
+          display:block;
+          margin-left:auto;
+          margin-right:auto;
+        ">
+          Повторить
+        </button>
+      `;
+      document.getElementById('retry-skin').onclick = () => renderValorantSkin(container);
+    });
+}
+
+
+
+
+
+/* ТАЙМЕР ВИДЖЕТ */
+function renderTimer(container){
+  container.innerHTML = `
+    <div class="timer-container">
+      <div class="timer-time" id="timerDisplay">25:00</div>
+      <div class="timer-buttons">
+        <button id="startBtn">Старт</button>
+        <button id="pauseBtn">Пауза</button>
+        <button id="resetBtn">Сброс</button>
+        <button id="breakBtn">Перерыв 5 мин</button>
+      </div>
+    </div>
+  `;
+
+  let isRunning = false;
+  let timeLeft = 25*60;
+  let timerInterval;
+
+  const display = container.querySelector('#timerDisplay');
+  const startBtn = container.querySelector('#startBtn');
+  const pauseBtn = container.querySelector('#pauseBtn');
+  const resetBtn = container.querySelector('#resetBtn');
+  const breakBtn = container.querySelector('#breakBtn');
+
+  function updateDisplay(){
+    const m = Math.floor(timeLeft/60).toString().padStart(2,'0');
+    const s = (timeLeft%60).toString().padStart(2,'0');
+    display.textContent = `${m}:${s}`;
+  }
+
+  function tick(){
+    if(timeLeft>0){
+      timeLeft--;
+      updateDisplay();
+    } else {
+      clearInterval(timerInterval);
+      isRunning = false;
+      alert('⏰ Время вышло!');
+      notify();
+    }
+  }
+
+  function startTimer(){
+    if(!isRunning){
+      isRunning = true;
+      timerInterval = setInterval(tick,1000);
+    }
+  }
+
+  function pauseTimer(){
+    isRunning = false;
+    clearInterval(timerInterval);
+  }
+
+  function resetTimer(){
+    pauseTimer();
+    timeLeft = 25*60;
+    updateDisplay();
+  }
+
+  function startBreak(){
+    pauseTimer();
+    timeLeft = 5*60;
+    updateDisplay();
+    startTimer();
+  }
+
+  function notify(){
+    if(Notification.permission === 'granted'){
+      new Notification('Таймер завершён!');
+    } else if(Notification.permission !== 'denied'){
+      Notification.requestPermission();
+    }
+  }
+
+  startBtn.onclick = startTimer;
+  pauseBtn.onclick = pauseTimer;
+  resetBtn.onclick = resetTimer;
+  breakBtn.onclick = startBreak;
+
+  updateDisplay();
+}
+
+/* ==== УПРАВЛЕНИЕ ==== */
+function addWidget(id){
+  const w = allWidgets.find(x=>x.id===id);
+  if(!w) return;
+  activeWidgets.push(w);
+  renderDashboard();
+}
+
+function removeWidget(id){
+  activeWidgets = activeWidgets.filter(w=>w.id!==id);
+  renderDashboard();
+}
+
+function refreshWidget(id){
+  loadWidgetContent(id);
+}
+
+/* ==== DRAG & DROP ==== */
+function addDragAndDrop(){
+  const dashboard = document.getElementById('dashboard');
+  const widgets = dashboard.querySelectorAll('.widget');
+  let dragged = null;
+
+  widgets.forEach(widget=>{
+    widget.addEventListener('dragstart', ()=>{
+      dragged = widget;
+      widget.classList.add('dragging');
+    });
+
+    widget.addEventListener('dragend', ()=>{
+      widget.classList.remove('dragging');
+      dragged = null;
+      const ids = Array.from(dashboard.querySelectorAll('.widget')).map(w=>w.dataset.id);
+      activeWidgets = ids.map(id => allWidgets.find(w=>w.id===id));
+      localStorage.setItem('dashboardWidgets', JSON.stringify(activeWidgets));
+    });
+
+    widget.addEventListener('dragover', e=>{
+      e.preventDefault();
+      const afterElement = getDragAfterElement(dashboard, e.clientY);
+      if(afterElement == null){
+        dashboard.appendChild(dragged);
+      } else {
+        dashboard.insertBefore(dragged, afterElement);
+      }
+    });
+  });
+}
+
+/* Улучшено: точнее определяет позицию для вставки */
+function getDragAfterElement(container, y){
+  const draggableElements = [...container.querySelectorAll('.widget:not(.dragging)')];
+  return draggableElements.reduce((closest, child)=>{
+    const box = child.getBoundingClientRect();
+    const offset = y - box.top - box.height/2;
+    if(offset < 0 && offset > closest.offset){
+      return { offset, element: child };
+    } else {
+      return closest;
+    }
+  }, { offset: Number.NEGATIVE_INFINITY }).element;
+}
+
+renderDashboard();
+</script>
+</body>
+</html>
